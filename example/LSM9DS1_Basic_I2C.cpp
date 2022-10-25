@@ -8,7 +8,7 @@
 #include "LSM9DS1.h"
 
 int main(int argc, char *argv[]) {
-    LSM9DS1 imu(IMU_MODE_I2C, 0x6b, 0x1e);
+    LSM9DS1 imu(IMU_MODE_I2C, 0x6A, 0x1C);
     imu.begin();
     if (!imu.begin()) {
         fprintf(stderr, "Failed to communicate with LSM9DS1.\n");
