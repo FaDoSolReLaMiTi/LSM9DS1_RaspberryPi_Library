@@ -23,8 +23,10 @@ Distributed as-is; no warranty is given.
 
 #include <time.h>
 #include <unistd.h>
-#include <wiringPi.h>
-#include <wiringPiI2C.h>
+#include <fcntl.h>				//Needed for I2C port
+#include <sys/ioctl.h>			//Needed for I2C port
+#include <linux/i2c-dev.h>		//Needed for I2C port
+#include <cstring>
 #include "LSM9DS1.h"
 #include "LSM9DS1_Registers.h"
 #include "LSM9DS1_Types.h"
@@ -43,8 +45,8 @@ LSM9DS1::LSM9DS1(interface_mode interface, uint8_t xgAddr, uint8_t mAddr)
 
 void LSM9DS1::init(interface_mode interface, uint8_t xgAddr, uint8_t mAddr)
 {
-    if (wiringPiSetupGpio() == -1)
-        return;
+    // if (wiringPiSetupGpio() == -1)
+    //     return;
 
     settings.device.commInterface = interface;
     settings.device.agAddress = xgAddr;
@@ -969,7 +971,7 @@ void LSM9DS1::xgWriteByte(uint8_t subAddress, uint8_t data)
     // Whether we're using I2C or SPI, write a byte using the
     // gyro-specific I2C address or SPI CS pin.
     if (settings.device.commInterface == IMU_MODE_I2C) {
-        I2CwriteByte(_xgAddress, subAddress, data);
+        I2CwriteBytes(_xgAddress, subAddress, &data, 1);
     } else if (settings.device.commInterface == IMU_MODE_SPI) {
         SPIwriteByte(_xgAddress, subAddress, data);
     }
@@ -981,7 +983,8 @@ void LSM9DS1::mWriteByte(uint8_t subAddress, uint8_t data)
     // Whether we're using I2C or SPI, write a byte using the
     // accelerometer-specific I2C address or SPI CS pin.
     if (settings.device.commInterface == IMU_MODE_I2C) {
-        return I2CwriteByte(_mAddress, subAddress, data);
+        I2CwriteBytes(_mAddress, subAddress, &data, 1);
+        return;
     } else if (settings.device.commInterface == IMU_MODE_SPI) {
         return SPIwriteByte(_mAddress, subAddress, data);
     }
@@ -993,7 +996,9 @@ uint8_t LSM9DS1::xgReadByte(uint8_t subAddress)
     // Whether we're using I2C or SPI, read a byte using the
     // gyro-specific I2C address or SPI CS pin.
     if (settings.device.commInterface == IMU_MODE_I2C) {
-        return I2CreadByte(_xgAddress, subAddress);
+        uint8_t val;
+        I2CreadBytes(_xgAddress, subAddress, &val, 1);
+        return val;
     } else if (settings.device.commInterface == IMU_MODE_SPI) {
         return SPIreadByte(_xgAddress, subAddress);
     }
@@ -1017,7 +1022,9 @@ uint8_t LSM9DS1::mReadByte(uint8_t subAddress)
     // Whether we're using I2C or SPI, read a byte using the
     // accelerometer-specific I2C address or SPI CS pin.
     if (settings.device.commInterface == IMU_MODE_I2C) {
-        return I2CreadByte(_mAddress, subAddress);
+        uint8_t val;
+        I2CreadBytes(_mAddress, subAddress, &val, 1);
+        return val;
     } else if (settings.device.commInterface == IMU_MODE_SPI) {
         return SPIreadByte(_mAddress, subAddress);
     }
@@ -1069,48 +1076,90 @@ void LSM9DS1::initI2C()
 }
 
 // Wire.h read and write protocols
-void LSM9DS1::I2CwriteByte(uint8_t address, uint8_t subAddress, uint8_t data)
+uint8_t LSM9DS1::I2CwriteBytes(uint8_t address, uint8_t subAddress, uint8_t *buff, int len)
 {
-    _fd = wiringPiI2CSetup(address);
-    if (_fd < 0) {
-        fprintf(stderr, "Error: I2CSetup failed\n");
-        exit(EXIT_FAILURE);
+    // _fd = wiringPiI2CSetup(address);
+    // if (_fd < 0) {
+    //     fprintf(stderr, "Error: I2CSetup failed\n");
+    //     exit(EXIT_FAILURE);
+    // }
+    // wiringPiI2CWriteReg8(_fd, subAddress, data);
+    // close(_fd);
+
+  static uint8_t all_to_write_buff[128];
+    char *filename = (char*)"/dev/i2c-1";
+    int i2c_fd = open(filename, O_RDWR);
+    if (i2c_fd < 0)
+    {
+        //ERROR HANDLING: you can check errno to see what went wrong
+        printf("Failed to open the i2c bus");
+        return 0;
     }
-    wiringPiI2CWriteReg8(_fd, subAddress, data);
-    close(_fd);
+
+    if (ioctl(i2c_fd, I2C_SLAVE, address) < 0)
+    {
+        //ERROR HANDLING; you can check errno to see what went wrong
+        printf("Failed to acquire bus access and/or talk to slave.\n");
+        return 0;
+    }
+
+      all_to_write_buff[0] = subAddress;
+    memcpy(&all_to_write_buff[1], buff, len);
+    write(i2c_fd, all_to_write_buff, len + 1);
+    return len;
 }
 
-uint8_t LSM9DS1::I2CreadByte(uint8_t address, uint8_t subAddress)
-{
-    _fd = wiringPiI2CSetup(address);
-    if (_fd < 0) {
-        fprintf(stderr, "Error: I2CSetup failed\n");
-        exit(EXIT_FAILURE);
-    }
-    uint8_t data; // `data` will store the register data
-    wiringPiI2CWrite(_fd, subAddress);
-    data = wiringPiI2CRead(_fd);                // Fill Rx buffer with result
-    close(_fd);
-    return data;                             // Return data read from slave register
-}
+// uint8_t LSM9DS1::I2CreadByte(uint8_t address, uint8_t subAddress)
+// {
+//     _fd = wiringPiI2CSetup(address);
+//     if (_fd < 0) {
+//         fprintf(stderr, "Error: I2CSetup failed\n");
+//         exit(EXIT_FAILURE);
+//     }
+//     uint8_t data; // `data` will store the register data
+//     wiringPiI2CWrite(_fd, subAddress);
+//     data = wiringPiI2CRead(_fd);                // Fill Rx buffer with result
+//     close(_fd);
+//     return data;                             // Return data read from slave register
+// }
 
 uint8_t LSM9DS1::I2CreadBytes(uint8_t address, uint8_t subAddress, uint8_t * dest, uint8_t count)
 {
-    _fd = wiringPiI2CSetup(address);
-    if (_fd < 0) {
-        fprintf(stderr, "Error: I2C Setup\n");
-        exit(EXIT_FAILURE);
-    }
-    wiringPiI2CWrite(_fd, subAddress);
-    uint8_t temp_dest[count];
-    if ((read(_fd, temp_dest, 6)) < 0) {
-        //fprintf(stderr, "Error: read value\n");
-        throw 999;
+    // _fd = wiringPiI2CSetup(address);
+    // if (_fd < 0) {
+    //     fprintf(stderr, "Error: I2C Setup\n");
+    //     exit(EXIT_FAILURE);
+    // }
+    // wiringPiI2CWrite(_fd, subAddress);
+    // uint8_t temp_dest[count];
+    // if ((read(_fd, temp_dest, 6)) < 0) {
+    //     //fprintf(stderr, "Error: read value\n");
+    //     throw 999;
+    //     return 0;
+    // }
+    // close(_fd);
+    // for (int i = 0; i < count; i++) {
+    //     dest[i] = temp_dest[i];
+    // }
+    // return count;
+
+    char *filename = (char*)"/dev/i2c-1";
+    int i2c_fd = open(filename, O_RDWR);
+    if (i2c_fd < 0)
+    {
+        //ERROR HANDLING: you can check errno to see what went wrong
+        printf("Failed to open the i2c bus");
         return 0;
     }
-    close(_fd);
-    for (int i = 0; i < count; i++) {
-        dest[i] = temp_dest[i];
+
+    if (ioctl(i2c_fd, I2C_SLAVE, address) < 0)
+    {
+        //ERROR HANDLING; you can check errno to see what went wrong
+        printf("Failed to acquire bus access and/or talk to slave.\n");
+        return 0;
     }
-    return count;
+    write(i2c_fd, &subAddress, 1);
+    uint32_t num_received = read(i2c_fd, dest, count);
+    close(i2c_fd);
+    return num_received;
 }

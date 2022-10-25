@@ -508,7 +508,7 @@ protected:
     //    - address = The 7-bit I2C address of the slave device.
     //    - subAddress = The register to be written to.
     //    - data = Byte to be written to the register.
-    void I2CwriteByte(uint8_t address, uint8_t subAddress, uint8_t data);
+    // void I2CwriteByte(uint8_t address, uint8_t subAddress, uint8_t data);
     
     // I2CreadByte() -- Read a single byte from a register over I2C.
     // Input:
@@ -516,7 +516,7 @@ protected:
     //    - subAddress = The register to be read from.
     // Output:
     //    - The byte read from the requested address.
-    uint8_t I2CreadByte(uint8_t address, uint8_t subAddress);
+    // uint8_t I2CreadByte(uint8_t address, uint8_t subAddress);
     
     // I2CreadBytes() -- Read a series of bytes, starting at a register via SPI
     // Input:
@@ -527,6 +527,9 @@ protected:
     // Output: No value is returned by the function, but the registers read are
     //         all stored in the *dest array given.
     uint8_t I2CreadBytes(uint8_t address, uint8_t subAddress, uint8_t * dest, uint8_t count);
+
+    uint8_t I2CwriteBytes(uint8_t address, uint8_t subAddress, uint8_t *buff, int len);
+
 };
 
 #endif // SFE_LSM9DS1_H //
